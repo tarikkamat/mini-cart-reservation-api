@@ -1,0 +1,48 @@
+# docker-compose.dev.yml
+#
+# Local development overlay. Layered on top of docker-compose.prod.yml — the
+# Makefile composes both with explicit `-f` flags (`make up`). Never used in
+# production; production deploys use docker-compose.prod.yml on its own.
+#
+# What this layer changes for the dev loop:
+# - Bind-mount the source tree so code edits land in the container without an
+#   image rebuild.
+# - `bootstrap/cache` becomes a named volume so framework caches stay writable
+#   by `www-data` even though the surrounding source is bind-mounted from the
+#   host. OPTIMIZE_ON_BOOT is turned off so stale caches do not survive an edit.
+# - Enable seeding on first boot so a fresh dev stack comes up with 50 sample
+#   products. The prod file leaves seeding off.
+# - Pin nginx to 127.0.0.1 so the dev port is not exposed beyond the host.
+
+services:
+  app:
+    volumes: !override
+      - .:/var/www/html
+      - app-bootstrap-cache:/var/www/html/bootstrap/cache
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      LOG_LEVEL: debug
+      OPTIMIZE_ON_BOOT: "false"
+      RUN_DB_SEED: "true"
+      # Enable OPcache file-mtime checks so edits to Blade/PHP files are
+      # picked up without restarting the container. Production keeps this
+      # at 0 for performance.
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+
+  queue:
+    volumes: !override
+      - .:/var/www/html
+      - app-bootstrap-cache:/var/www/html/bootstrap/cache
+
+  scheduler:
+    volumes: !override
+      - .:/var/www/html
+      - app-bootstrap-cache:/var/www/html/bootstrap/cache
+
+  nginx:
+    ports: !override
+      - "127.0.0.1:${NGINX_HTTP_PORT:-80}:80"
+
+volumes:
+  app-bootstrap-cache:
